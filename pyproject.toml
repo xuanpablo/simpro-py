@@ -1,0 +1,49 @@
+[project]
+name = "simpro-py"
+version = "0.1.0"
+description = "Python client for the SimPro Cloud REST API (v1.0)."
+readme = "README.md"
+license = { file = "LICENCE.txt" }
+requires-python = ">=3.12"
+authors = [{ name = "Paul Millar" }]
+keywords = ["simpro", "simprosuite", "construction", "api", "client"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = ["httpx>=0.27"]
+
+[project.urls]
+Homepage = "https://github.com/xuanpablo/simpro-py"
+Changelog = "https://github.com/xuanpablo/simpro-py/releases"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff==0.16.9", "mypy==2.3.1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/simpro"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/simpro"]
