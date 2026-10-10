@@ -11,12 +11,12 @@ for customer in client.customers.iter_all(0):
     print(customer["ID"], customer.get("CompanyName") or customer.get("FamilyName"))
 ```
 
-The distribution is `simpro-py`; the import name is `simpro`.
+The distribution is `simpro-py-sdk`; the import name is `simpro`.
 
 ## Install
 
 ```bash
-pip install simpro-py
+pip install simpro-py-sdk
 ```
 
 Requires Python 3.12+. The only runtime dependency is `httpx`.

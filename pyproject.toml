@@ -1,5 +1,5 @@
 [project]
-name = "simpro-py"
+name = "simpro-py-sdk"
 version = "0.1.0"
 description = "Python client for the SimPro Cloud REST API (v1.0)."
 readme = "README.md"
