@@ -1,6 +1,6 @@
 [project]
 name = "simpro-py-sdk"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python client for the SimPro Cloud REST API (v1.0)."
 readme = "README.md"
 license = { file = "LICENCE.txt" }
