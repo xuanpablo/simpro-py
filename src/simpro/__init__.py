@@ -17,15 +17,19 @@ from simpro.exceptions import (
     SimproRateLimitError,
     SimproValidationError,
 )
+from simpro.ratelimit import DEFAULT_RATE_LIMIT, RateLimiter, SlidingWindowRateLimiter
 
 __version__ = "0.1.1"
 
 __all__ = [
+    "DEFAULT_RATE_LIMIT",
+    "RateLimiter",
     "SimproAuthError",
     "SimproClient",
     "SimproError",
     "SimproNotFound",
     "SimproRateLimitError",
     "SimproValidationError",
+    "SlidingWindowRateLimiter",
     "__version__",
 ]

@@ -25,6 +25,7 @@ from simpro.exceptions import (
     SimproRateLimitError,
     SimproValidationError,
 )
+from simpro.ratelimit import DEFAULT_RATE_LIMIT, RateLimiter, SlidingWindowRateLimiter
 from simpro.resources import Companies, Customers, Jobs, Sites
 
 DEFAULT_TIMEOUT = 30.0
@@ -39,6 +40,14 @@ class SimproClient:
         api_key: API key bearer token (SimPro > Administration > API Keys).
         timeout: Per-request timeout in seconds.
         transport: Optional ``httpx`` transport override (testing/proxies).
+        rate_limit: Built-in pacing ceiling in requests/second. The
+            limiter starts no more than this many requests in any sliding
+            second. ``None`` disables pacing. Default 9.0 — just under
+            SimPro's documented limit of 10/second per build and IP,
+            which is shared across all integrations on the build.
+        rate_limiter: Explicit limiter, overriding ``rate_limit``. Pass
+            one shared instance to several clients pointed at the same
+            build so they count against a single budget.
     """
 
     def __init__(
@@ -48,9 +57,14 @@ class SimproClient:
         *,
         timeout: float = DEFAULT_TIMEOUT,
         transport: httpx.BaseTransport | None = None,
+        rate_limit: float | None = DEFAULT_RATE_LIMIT,
+        rate_limiter: RateLimiter | None = None,
     ) -> None:
         base = base_url.rstrip("/").removesuffix(API_PREFIX)
         self._base = base
+        if rate_limiter is None and rate_limit is not None:
+            rate_limiter = SlidingWindowRateLimiter(rate_limit)
+        self._limiter = rate_limiter
         self._http = httpx.Client(
             timeout=timeout,
             headers={
@@ -89,6 +103,8 @@ class SimproClient:
         e.g. ``/companies/0/customers/``. A 304 (If-Modified-Since hit) is
         returned to the caller as a normal response.
         """
+        if self._limiter is not None:
+            self._limiter.acquire()
         url = f"{self._base}{API_PREFIX}{path}"
         try:
             response = self._http.request(method, url, params=params, headers=headers)
