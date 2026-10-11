@@ -3,6 +3,7 @@
 from simpro.resources.companies import Companies
 from simpro.resources.customers import Customers
 from simpro.resources.jobs import Jobs
+from simpro.resources.leads import Leads
 from simpro.resources.sites import Sites
 
-__all__ = ["Companies", "Customers", "Jobs", "Sites"]
+__all__ = ["Companies", "Customers", "Jobs", "Leads", "Sites"]

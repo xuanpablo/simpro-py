@@ -11,7 +11,9 @@ from simpro import SimproClient, SimproNotFound
 
 
 def make_client(handler: Any) -> SimproClient:
-    return SimproClient("https://t.simprosuite.com", "k", transport=httpx.MockTransport(handler))
+    return SimproClient(
+        "https://t.simprosuite.com", "k", transport=httpx.MockTransport(handler)
+    )
 
 
 def full_url(request: httpx.Request) -> str:
@@ -72,7 +74,9 @@ def test_customer_get_falls_back_to_individuals_on_404() -> None:
         requests.append(request)
         if request.url.path.endswith("/customers/companies/7"):
             return httpx.Response(404, json={"message": "Not found"})
-        return httpx.Response(200, json={"ID": 7, "GivenName": "Jane", "FamilyName": "Doe"})
+        return httpx.Response(
+            200, json={"ID": 7, "GivenName": "Jane", "FamilyName": "Doe"}
+        )
 
     client = make_client(handler)
     result = client.customers.get(0, 7)
@@ -101,8 +105,14 @@ def test_sites_and_jobs_get_urls() -> None:
     client = make_client(handler)
     client.sites.get(0, 12)
     client.jobs.get(0, 34)
-    assert str(requests[0].url) == "https://t.simprosuite.com/api/v1.0/companies/0/sites/12"
-    assert full_url(requests[1]) == "https://t.simprosuite.com/api/v1.0/companies/0/jobs/34"
+    assert (
+        str(requests[0].url)
+        == "https://t.simprosuite.com/api/v1.0/companies/0/sites/12"
+    )
+    assert (
+        full_url(requests[1])
+        == "https://t.simprosuite.com/api/v1.0/companies/0/jobs/34"
+    )
 
 
 def test_sites_and_jobs_list_urls() -> None:
@@ -115,5 +125,51 @@ def test_sites_and_jobs_list_urls() -> None:
     client = make_client(handler)
     client.sites.list(0)
     client.jobs.list(0)
-    assert full_url(requests[0]) == "https://t.simprosuite.com/api/v1.0/companies/0/sites/"
-    assert full_url(requests[1]) == "https://t.simprosuite.com/api/v1.0/companies/0/jobs/"
+    assert (
+        full_url(requests[0]) == "https://t.simprosuite.com/api/v1.0/companies/0/sites/"
+    )
+    assert (
+        full_url(requests[1]) == "https://t.simprosuite.com/api/v1.0/companies/0/jobs/"
+    )
+
+
+def test_leads_list_url_and_columns_filter() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=[])
+
+    client = make_client(handler)
+    client.leads.list(0, columns="ID,LeadName,Stage")
+    assert (
+        full_url(requests[0]) == "https://t.simprosuite.com/api/v1.0/companies/0/leads/"
+    )
+    assert requests[0].url.params["columns"] == "ID,LeadName,Stage"
+
+
+def test_leads_get_url() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ID": 5, "Stage": "Open"})
+
+    client = make_client(handler)
+    assert client.leads.get(0, 5)["Stage"] == "Open"
+    assert (
+        full_url(requests[0])
+        == "https://t.simprosuite.com/api/v1.0/companies/0/leads/5"
+    )
+
+
+def test_leads_iter_all_walks_pages() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = request.url.params.get("page", "1")
+        body = [{"ID": 1}, {"ID": 2}] if page == "1" else [{"ID": 3}]
+        return httpx.Response(200, json=body, headers={"Result-Pages": "2"})
+
+    client = SimproClient(
+        "https://t.simprosuite.com", "k", transport=httpx.MockTransport(handler)
+    )
+    assert [lead["ID"] for lead in client.leads.iter_all(0)] == [1, 2, 3]

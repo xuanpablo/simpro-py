@@ -26,7 +26,7 @@ from simpro.exceptions import (
     SimproValidationError,
 )
 from simpro.ratelimit import DEFAULT_RATE_LIMIT, RateLimiter, SlidingWindowRateLimiter
-from simpro.resources import Companies, Customers, Jobs, Sites
+from simpro.resources import Companies, Customers, Jobs, Leads, Sites
 
 DEFAULT_TIMEOUT = 30.0
 
@@ -78,6 +78,7 @@ class SimproClient:
         self.customers = Customers(self)
         self.sites = Sites(self)
         self.jobs = Jobs(self)
+        self.leads = Leads(self)
 
     def __enter__(self) -> Self:
         return self

@@ -19,7 +19,7 @@ from simpro.exceptions import (
 )
 from simpro.ratelimit import DEFAULT_RATE_LIMIT, RateLimiter, SlidingWindowRateLimiter
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 __all__ = [
     "DEFAULT_RATE_LIMIT",
