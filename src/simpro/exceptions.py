@@ -26,7 +26,21 @@ class SimproNotFound(SimproError):
 
 
 class SimproRateLimitError(SimproError):
-    """SimPro rate limit exceeded (429). Retry after a pause; the SDK does not retry."""
+    """SimPro rate limit exceeded (429).
+
+    ``retry_after`` holds the ``Retry-After`` header parsed as seconds
+    when SimPro sent one, otherwise ``None``.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after: float | None = None,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message, status_code=status_code)
+        self.retry_after = retry_after
 
 
 class SimproValidationError(SimproError):

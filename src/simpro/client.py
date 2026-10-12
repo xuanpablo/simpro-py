@@ -127,7 +127,9 @@ def _raise_for_status(response: httpx.Response) -> None:
         raise SimproNotFound(f"SimPro resource not found: {response.url}", status_code=status)
     if status == 429:
         raise SimproRateLimitError(
-            "SimPro rate limit exceeded; retry after a pause", status_code=status
+            "SimPro rate limit exceeded; retry after a pause",
+            retry_after=_parse_retry_after(response),
+            status_code=status,
         )
     if status == 422:
         message, details = _parse_validation_body(response)
@@ -136,6 +138,22 @@ def _raise_for_status(response: httpx.Response) -> None:
         f"SimPro request failed with HTTP {status}: {response.text[:200]}",
         status_code=status,
     )
+
+
+def _parse_retry_after(response: httpx.Response) -> float | None:
+    """Parse ``Retry-After`` as a delay in seconds; ``None`` when unusable.
+
+    SimPro sends the delay-seconds form (``Retry-After: 5``). Anything
+    else — absent header, HTTP-date form, garbage — degrades to ``None``
+    so callers fall back to their own backoff.
+    """
+    raw = response.headers.get("Retry-After")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
 
 
 def _parse_validation_body(

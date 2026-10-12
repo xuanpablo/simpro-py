@@ -45,6 +45,22 @@ def test_rate_limit() -> None:
     assert excinfo.value.status_code == 429
 
 
+def test_rate_limit_error_carries_retry_after() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, headers={"Retry-After": "7"})
+
+    client = SimproClient("https://t.simprosuite.com", "k", transport=httpx.MockTransport(handler))
+    with pytest.raises(SimproRateLimitError) as excinfo:
+        client.companies.list()
+    assert excinfo.value.retry_after == 7.0
+
+
+def test_rate_limit_error_retry_after_defaults_to_none() -> None:
+    with pytest.raises(SimproRateLimitError) as excinfo:
+        status_client(429).companies.list()
+    assert excinfo.value.retry_after is None
+
+
 def test_422_with_errors_list() -> None:
     body = {
         "message": "The given data was invalid.",
