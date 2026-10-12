@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 import pytest
 
@@ -15,14 +17,15 @@ from simpro import (
 )
 
 
-def status_client(status: int, body: object | None = None) -> SimproClient:
+def status_client(status: int, body: object | None = None, **client_kwargs: Any) -> SimproClient:
     def handler(request: httpx.Request) -> httpx.Response:
         kwargs: dict[str, object] = {}
         if body is not None:
             kwargs["json"] = body
         return httpx.Response(status, **kwargs)  # type: ignore[arg-type]
 
-    return SimproClient("https://t.simprosuite.com", "k", transport=httpx.MockTransport(handler))
+    client_kwargs.setdefault("transport", httpx.MockTransport(handler))
+    return SimproClient("https://t.simprosuite.com", "k", **client_kwargs)
 
 
 @pytest.mark.parametrize("status", [401, 403])
@@ -41,15 +44,21 @@ def test_not_found() -> None:
 
 def test_rate_limit() -> None:
     with pytest.raises(SimproRateLimitError) as excinfo:
-        status_client(429).companies.list()
+        status_client(429, max_retries=0).companies.list()
     assert excinfo.value.status_code == 429
+    assert excinfo.value.retry_after is None
 
 
 def test_rate_limit_error_carries_retry_after() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, headers={"Retry-After": "7"})
 
-    client = SimproClient("https://t.simprosuite.com", "k", transport=httpx.MockTransport(handler))
+    client = SimproClient(
+        "https://t.simprosuite.com",
+        "k",
+        transport=httpx.MockTransport(handler),
+        max_retries=0,
+    )
     with pytest.raises(SimproRateLimitError) as excinfo:
         client.companies.list()
     assert excinfo.value.retry_after == 7.0
@@ -57,7 +66,7 @@ def test_rate_limit_error_carries_retry_after() -> None:
 
 def test_rate_limit_error_retry_after_defaults_to_none() -> None:
     with pytest.raises(SimproRateLimitError) as excinfo:
-        status_client(429).companies.list()
+        status_client(429, max_retries=0).companies.list()
     assert excinfo.value.retry_after is None
 
 

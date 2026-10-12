@@ -13,6 +13,7 @@ should pace requests and retry 429s/transport errors themselves.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from time import sleep as _sleep
 from typing import Any, Self
 
 import httpx
@@ -29,6 +30,7 @@ from simpro.ratelimit import DEFAULT_RATE_LIMIT, RateLimiter, SlidingWindowRateL
 from simpro.resources import Companies, Customers, Jobs, Leads, Sites
 
 DEFAULT_TIMEOUT = 30.0
+DEFAULT_MAX_RETRIES = 3
 
 
 class SimproClient:
@@ -48,6 +50,9 @@ class SimproClient:
         rate_limiter: Explicit limiter, overriding ``rate_limit``. Pass
             one shared instance to several clients pointed at the same
             build so they count against a single budget.
+        max_retries: Automatic retries when SimPro answers 429, honouring
+            ``Retry-After`` when present (else exponential backoff from
+            1s, capped at 30s). 0 disables retrying.
     """
 
     def __init__(
@@ -59,12 +64,16 @@ class SimproClient:
         transport: httpx.BaseTransport | None = None,
         rate_limit: float | None = DEFAULT_RATE_LIMIT,
         rate_limiter: RateLimiter | None = None,
+        max_retries: int = DEFAULT_MAX_RETRIES,
     ) -> None:
         base = base_url.rstrip("/").removesuffix(API_PREFIX)
         self._base = base
         if rate_limiter is None and rate_limit is not None:
             rate_limiter = SlidingWindowRateLimiter(rate_limit)
         self._limiter = rate_limiter
+        if max_retries < 0:
+            raise ValueError(f"max_retries must be >= 0, got {max_retries!r}")
+        self._max_retries = max_retries
         self._http = httpx.Client(
             timeout=timeout,
             headers={
@@ -103,14 +112,24 @@ class SimproClient:
         ``path`` is relative to the API prefix and starts with ``/``,
         e.g. ``/companies/0/customers/``. A 304 (If-Modified-Since hit) is
         returned to the caller as a normal response.
+
+        Every attempt is paced by the client's rate limiter (if one is
+        configured). A 429 answer is retried up to ``max_retries`` times
+        — honouring ``Retry-After`` when SimPro sends it, otherwise
+        exponential backoff — before ``SimproRateLimitError`` is raised.
         """
-        if self._limiter is not None:
-            self._limiter.acquire()
         url = f"{self._base}{API_PREFIX}{path}"
-        try:
-            response = self._http.request(method, url, params=params, headers=headers)
-        except httpx.HTTPError as exc:
-            raise SimproError(f"SimPro request failed: {exc}") from exc
+        attempts = self._max_retries + 1
+        for attempt in range(attempts):
+            if self._limiter is not None:
+                self._limiter.acquire()
+            try:
+                response = self._http.request(method, url, params=params, headers=headers)
+            except httpx.HTTPError as exc:
+                raise SimproError(f"SimPro request failed: {exc}") from exc
+            if response.status_code != 429 or attempt == attempts - 1:
+                break
+            _sleep(_retry_delay(response, attempt))
         _raise_for_status(response)
         return response
 
@@ -154,6 +173,17 @@ def _parse_retry_after(response: httpx.Response) -> float | None:
         return float(raw)
     except ValueError:
         return None
+
+
+def _retry_delay(response: httpx.Response, attempt: int) -> float:
+    """Wait before retrying a 429: Retry-After when usable, else backoff.
+
+    The fallback starts at 1s and doubles per attempt, capped at 30s.
+    """
+    retry_after = _parse_retry_after(response)
+    if retry_after is not None and retry_after > 0:
+        return retry_after
+    return min(1.0 * 2**attempt, 30.0)
 
 
 def _parse_validation_body(
