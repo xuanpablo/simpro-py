@@ -26,10 +26,13 @@ class SimproNotFound(SimproError):
 
 
 class SimproRateLimitError(SimproError):
-    """SimPro rate limit exceeded (429).
+    """SimPro rate limit exceeded (429) after automatic retries ran out.
 
-    ``retry_after`` holds the ``Retry-After`` header parsed as seconds
-    when SimPro sent one, otherwise ``None``.
+    The client already paces requests under SimPro's 10 calls/second
+    limit and retries 429 answers (``max_retries``), so seeing this
+    usually means other traffic on the build consumed the shared budget.
+    ``retry_after`` holds the ``Retry-After`` header in seconds when
+    SimPro sent one, otherwise ``None``.
     """
 
     def __init__(

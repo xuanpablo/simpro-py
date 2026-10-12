@@ -36,8 +36,8 @@ doubled-prefix 404 (`Invalid route`) cannot happen.
 
 ## Resources
 
-0.1.x ships read-only access to the first-slice resources, one namespace per
-resource, hung off the client:
+The client ships read-only access to the first-slice resources, one
+namespace per resource, hung off the client:
 
 | Namespace | Endpoints |
 |---|---|
@@ -45,6 +45,7 @@ resource, hung off the client:
 | `client.customers` | `list(company_id, ...)`, `get(company_id, customer_id)`, `iter_all(company_id, **filters)` |
 | `client.sites` | `list(company_id, ...)`, `get(company_id, site_id)`, `iter_all(company_id, **filters)` |
 | `client.jobs` | `list(company_id, ...)`, `get(company_id, job_id)`, `iter_all(company_id, **filters)` |
+| `client.leads` | `list(company_id, ...)`, `get(company_id, lead_id)`, `iter_all(company_id, **filters)` — list items are minimal; extra fields come via `columns="ID,LeadName,Stage"` |
 
 `company_id` is `0` unless your build uses SimPro multi-company.
 
@@ -83,6 +84,41 @@ since = last_sync_run_at  # aware datetime; naive values are treated as UTC
 new_customers = client.customers.list(0, modified_since=since)
 ```
 
+## Rate limiting
+
+SimPro enforces **10 API calls per second, per build and per IP** — a budget
+shared across every integration and UI session hitting the build — and
+answers over-limit traffic with `HTTP 429` (strictly enforced since April
+2025).
+
+The client keeps you inside that budget:
+
+```python
+client = SimproClient(base_url, api_key)  # paced at 9 req/s
+client = SimproClient(base_url, api_key, rate_limit=10)  # right at the ceiling
+client = SimproClient(base_url, api_key, rate_limit=None)  # you handle pacing
+```
+
+- Pacing uses a sliding one-second window (default **9 requests/second**,
+  just under the ceiling to leave headroom for other traffic on the shared
+  budget) and adds no dependencies.
+- The limit is per *build*, not per client: pass one shared limiter to
+  several clients on the same tenant so they count against a single budget.
+
+```python
+from simpro import SlidingWindowRateLimiter
+
+limiter = SlidingWindowRateLimiter(9)
+a = SimproClient(base_url, key_a, rate_limiter=limiter)
+b = SimproClient(base_url, key_b, rate_limiter=limiter)
+```
+
+- When SimPro still answers `429` (other integrations can consume the
+  shared budget), the client retries automatically — up to `max_retries`
+  times (default 3), honouring `Retry-After` when present, otherwise
+  exponential backoff (1s, doubling, capped at 30s). Set `max_retries=0`
+  to disable retrying.
+
 ## Errors
 
 All failures raise a subclass of `SimproError`:
@@ -92,7 +128,7 @@ All failures raise a subclass of `SimproError`:
 | `SimproAuthError` | 401, 403 |
 | `SimproNotFound` | 404 |
 | `SimproValidationError` | 422 (`.details` holds the raw error list) |
-| `SimproRateLimitError` | 429 |
+| `SimproRateLimitError` | 429 after retries exhausted (`.retry_after` holds the parsed header, when sent) |
 | `SimproError` | anything else, including transport failures |
 
 SimPro 422 bodies are normally `{"errors": [{"path", "message", "value"}, ...]}`
@@ -101,10 +137,11 @@ but the `errors` key may be absent — both shapes are handled, and
 
 ## Deliberate omissions
 
-- **No retry, no rate limiting, no caching.** SimPro allows roughly 10
-  requests/second per key; callers doing bulk pulls should pace requests and
-  retry 429s/transport errors themselves.
-- **No write endpoints** in 0.1.x — read-only first.
+- **No retry on transport errors** — only `429` is retried automatically
+  (see [Rate limiting](#rate-limiting)); connection resets and timeouts
+  remain the caller's job.
+- **No caching.**
+- **No write endpoints** yet — read-only first.
 - **No DTO layer** — responses are plain JSON dicts, so SDK releases never
   lag the API.
 

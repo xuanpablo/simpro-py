@@ -5,9 +5,9 @@ Every request URL is built in one place (``_request``) as
 the prefix is stripped first, so the well-known doubling trap (simPRO
 answers 404 ``Invalid route``) is impossible by construction.
 
-The client is intentionally thin: no retry, no rate limiting, no caching.
-SimPro allows roughly 10 requests/second per key — callers with bulk pulls
-should pace requests and retry 429s/transport errors themselves.
+Requests are paced inside SimPro's rate limit — 10 calls/second per build
+and IP, shared across all integrations — and 429 answers are retried with
+backoff. See ``simpro.ratelimit`` for the limiter itself.
 """
 
 from __future__ import annotations
