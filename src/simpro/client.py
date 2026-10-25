@@ -27,7 +27,7 @@ from simpro.exceptions import (
     SimproValidationError,
 )
 from simpro.ratelimit import DEFAULT_RATE_LIMIT, RateLimiter, SlidingWindowRateLimiter
-from simpro.resources import Companies, Customers, Jobs, Leads, Sites
+from simpro.resources import Companies, Customers, Jobs, Leads, Quotes, Sites, Webhooks
 
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_MAX_RETRIES = 3
@@ -88,6 +88,8 @@ class SimproClient:
         self.sites = Sites(self)
         self.jobs = Jobs(self)
         self.leads = Leads(self)
+        self.quotes = Quotes(self)
+        self.webhooks = Webhooks(self)
 
     def __enter__(self) -> Self:
         return self
@@ -106,12 +108,14 @@ class SimproClient:
         *,
         params: Mapping[str, Any] | None = None,
         headers: Mapping[str, str] | None = None,
+        json: Any | None = None,
     ) -> httpx.Response:
         """Perform one API request and map failures to typed exceptions.
 
         ``path`` is relative to the API prefix and starts with ``/``,
         e.g. ``/companies/0/customers/``. A 304 (If-Modified-Since hit) is
-        returned to the caller as a normal response.
+        returned to the caller as a normal response. ``json`` is serialised
+        as the request body when given (POST/PATCH).
 
         Every attempt is paced by the client's rate limiter (if one is
         configured). A 429 answer is retried up to ``max_retries`` times
@@ -124,7 +128,9 @@ class SimproClient:
             if self._limiter is not None:
                 self._limiter.acquire()
             try:
-                response = self._http.request(method, url, params=params, headers=headers)
+                response = self._http.request(
+                    method, url, params=params, headers=headers, json=json
+                )
             except httpx.HTTPError as exc:
                 raise SimproError(f"SimPro request failed: {exc}") from exc
             if response.status_code != 429 or attempt == attempts - 1:

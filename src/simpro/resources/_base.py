@@ -10,7 +10,7 @@ back to stopping on a short page.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -137,6 +137,38 @@ class CompanyScopedResource(Resource):
             params=params,
             headers=headers,
         )
+
+
+class WritableCompanyScopedResource(CompanyScopedResource):
+    """Company-scoped resource that also supports write verbs.
+
+    Writes are minimal by design — callers pass the exact SimPro body,
+    there is no DTO layer. ``delete`` returns ``None``; SimPro answers
+    ``204 No Content`` for a successful delete, which is tolerated (as is
+    any other 2xx).
+    """
+
+    _resource: str
+
+    def create(self, company_id: int, data: Mapping[str, Any]) -> Any:
+        """Create one record (``POST …/<resource>/``) and return the body."""
+        response = self._client._request(
+            "POST", f"/companies/{company_id}/{self._resource}/", json=dict(data)
+        )
+        return response.json()
+
+    def update(self, company_id: int, record_id: int, data: Mapping[str, Any]) -> Any:
+        """Partially update one record (``PATCH …/<resource>/{id}``)."""
+        response = self._client._request(
+            "PATCH",
+            f"/companies/{company_id}/{self._resource}/{record_id}",
+            json=dict(data),
+        )
+        return response.json()
+
+    def delete(self, company_id: int, record_id: int) -> None:
+        """Delete one record (``DELETE …/<resource>/{id}``)."""
+        self._client._request("DELETE", f"/companies/{company_id}/{self._resource}/{record_id}")
 
 
 def _clamp_page_size(per_page: int) -> int:

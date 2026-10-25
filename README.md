@@ -46,6 +46,8 @@ namespace per resource, hung off the client:
 | `client.sites` | `list(company_id, ...)`, `get(company_id, site_id)`, `iter_all(company_id, **filters)` |
 | `client.jobs` | `list(company_id, ...)`, `get(company_id, job_id)`, `iter_all(company_id, **filters)` |
 | `client.leads` | `list(company_id, ...)`, `get(company_id, lead_id)`, `iter_all(company_id, **filters)` — list items are minimal; extra fields come via `columns="ID,LeadName,Stage"` |
+| `client.quotes` | `list(company_id, ...)`, `get(company_id, quote_id)`, `iter_all(company_id, **filters)` — same `columns` projection as leads |
+| `client.webhooks` | `list(company_id, ...)`, `get(company_id, webhook_id)`, `iter_all(company_id)`, `create(company_id, data)`, `update(company_id, webhook_id, data)`, `delete(company_id, webhook_id)` — webhook subscriptions (`setup/webhooks`), see below |
 
 `company_id` is `0` unless your build uses SimPro multi-company.
 
@@ -83,6 +85,33 @@ and maps a `304 Not Modified` answer to an empty result:
 since = last_sync_run_at  # aware datetime; naive values are treated as UTC
 new_customers = client.customers.list(0, modified_since=since)
 ```
+
+## Webhooks
+
+Subscriptions are fully API-managed per build/company — register one yourself
+instead of asking a tenant admin:
+
+```python
+subscription = client.webhooks.create(
+    0,
+    {
+        "Name": "My integration",
+        "CallbackURL": "https://example.com/webhook/abc123",
+        "Secret": "shared-secret",
+        "Events": ["lead.created", "lead.updated", "lead.deleted"],
+    },
+)
+webhook_id = subscription["ID"]
+client.webhooks.update(0, webhook_id, {"Events": ["lead.created"]})
+client.webhooks.delete(0, webhook_id)
+```
+
+The delivery payload is thin — the event name and the record ids only, e.g.
+`{"ID": "lead.created", "reference": {"companyID": 0, "leadID": 501}}` — so
+fetch the record from the resource namespace named by the event.
+
+Deliveries are at-least-once and can be paused after repeated failures, with
+no documented replay API: keep a periodic poll beside the webhook.
 
 ## Rate limiting
 
@@ -141,7 +170,8 @@ but the `errors` key may be absent — both shapes are handled, and
   (see [Rate limiting](#rate-limiting)); connection resets and timeouts
   remain the caller's job.
 - **No caching.**
-- **No write endpoints** yet — read-only first.
+- **Writes are limited to webhook subscriptions** — `create`/`update`/`delete`
+  on `client.webhooks`; every other namespace is read-only.
 - **No DTO layer** — responses are plain JSON dicts, so SDK releases never
   lag the API.
 

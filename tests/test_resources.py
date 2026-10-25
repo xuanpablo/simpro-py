@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -152,3 +153,107 @@ def test_leads_iter_all_walks_pages() -> None:
 
     client = SimproClient("https://t.simprosuite.com", "k", transport=httpx.MockTransport(handler))
     assert [lead["ID"] for lead in client.leads.iter_all(0)] == [1, 2, 3]
+
+
+def test_quotes_list_url_and_columns_filter() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=[])
+
+    client = make_client(handler)
+    client.quotes.list(0, columns="ID,Name,Stage")
+    assert full_url(requests[0]) == "https://t.simprosuite.com/api/v1.0/companies/0/quotes/"
+    assert requests[0].url.params["columns"] == "ID,Name,Stage"
+
+
+def test_quotes_get_url() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ID": 900, "Stage": "Issued"})
+
+    client = make_client(handler)
+    assert client.quotes.get(0, 900)["Stage"] == "Issued"
+    assert full_url(requests[0]) == "https://t.simprosuite.com/api/v1.0/companies/0/quotes/900"
+
+
+def test_quotes_iter_all_walks_pages() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = request.url.params.get("page", "1")
+        body = [{"ID": 900}, {"ID": 901}] if page == "1" else [{"ID": 902}]
+        return httpx.Response(200, json=body, headers={"Result-Pages": "2"})
+
+    client = SimproClient("https://t.simprosuite.com", "k", transport=httpx.MockTransport(handler))
+    assert [quote["ID"] for quote in client.quotes.iter_all(0)] == [900, 901, 902]
+
+
+def test_webhook_create_posts_body_and_returns_it() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ID": 12, "Name": "NexBilt lead sync"})
+
+    client = make_client(handler)
+    created = client.webhooks.create(
+        0,
+        {
+            "Name": "NexBilt lead sync",
+            "CallbackURL": "https://x/simpro/webhook/t",
+            "Events": [],
+        },
+    )
+    assert created == {"ID": 12, "Name": "NexBilt lead sync"}
+    assert requests[0].method == "POST"
+    assert full_url(requests[0]) == "https://t.simprosuite.com/api/v1.0/companies/0/setup/webhooks/"
+    assert json.loads(requests[0].content) == {
+        "Name": "NexBilt lead sync",
+        "CallbackURL": "https://x/simpro/webhook/t",
+        "Events": [],
+    }
+
+
+def test_webhook_update_patches_record() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ID": 7, "Events": ["lead.created"]})
+
+    client = make_client(handler)
+    client.webhooks.update(0, 7, {"Events": ["lead.created"]})
+    assert requests[0].method == "PATCH"
+    assert (
+        full_url(requests[0]) == "https://t.simprosuite.com/api/v1.0/companies/0/setup/webhooks/7"
+    )
+    assert json.loads(requests[0].content) == {"Events": ["lead.created"]}
+
+
+def test_webhook_delete_tolerates_204() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(204)
+
+    client = make_client(handler)
+    assert client.webhooks.delete(0, 7) is None
+    assert requests[0].method == "DELETE"
+    assert full_url(requests[0]) == (
+        "https://t.simprosuite.com/api/v1.0/companies/0/setup/webhooks/7"
+    )
+
+
+def test_webhook_list_gets_collection() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=[{"ID": 3}])
+
+    client = make_client(handler)
+    assert client.webhooks.list(0) == [{"ID": 3}]
+    assert full_url(requests[0]) == "https://t.simprosuite.com/api/v1.0/companies/0/setup/webhooks/"
